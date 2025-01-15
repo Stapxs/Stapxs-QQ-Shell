@@ -4,20 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/76creates/stickers/flexbox"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
-	textStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("69")).Render
-	timeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
-	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
-
-	tipStyle = lipgloss.NewStyle().Align(lipgloss.Right)
 )
 
 type MainModel struct {
@@ -48,7 +40,7 @@ func InitialMainModel() MainModel {
 	return MainModel{
 		flexBox: flexBox,
 		spinner: newSpinner,
-		timer:   timer.NewWithInterval(time.Second*1, time.Millisecond),
+		timer:   timer.NewWithInterval(time.Second*2, time.Millisecond),
 	}
 }
 
@@ -76,17 +68,24 @@ func (m MainModel) Update(msg tea.Msg) (View, tea.Cmd) {
 }
 
 func (m MainModel) View() (s string) {
-	str := fmt.Sprintf("%s%s%s%s",
+	str := fmt.Sprintf("%s%s%s",
 		m.spinner.View(),
 		" ",
-		textStyle("正在加载..."),
-		timeStyle(" ("+m.timer.View()+")"),
+		textStyle("初始化中..."),
 	)
-	errStr := ""
-	if m.timer.Timedout() {
+	if ErrorMsg == "" && m.timer.Timedout() {
 		CurrentView = "chat"
 	}
-	m.flexBox.GetRow(1).GetCell(1).SetContent(str)
-	m.flexBox.GetRow(1).GetCell(2).SetContent(errStr)
+
+	errorStyleTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Background(lipgloss.Color("#fc5c65")).Margin(1, 0, 0, 3).Render
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#fc5c65")).Margin(1, 0, 0, 3).Render
+	// 此视图有时候也用于全局错误提示
+	if ErrorMsg == "" {
+		m.flexBox.GetRow(1).GetCell(1).SetContent(str)
+	} else {
+		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 退出 • "))
+		m.flexBox.GetRow(1).GetCell(2).SetContent(helpStyle("> " + ErrorMsg))
+		m.flexBox.GetRow(0).GetCell(0).SetContent(errorStyleTitle("错误摘要") + errorStyle(ErrorFullTrace))
+	}
 	return m.flexBox.Render()
 }
