@@ -104,28 +104,46 @@ func parseMessage(c *Client, message string) {
 	if err != nil {
 		return
 	}
+
+	methodName := ""
+	var echoList []string
 	if _, ok := data["echo"]; ok {
 		echoList := strings.Split(data["echo"].(string), "_")
-		head := echoList[0]
-
-		v := reflect.ValueOf(MsgFunc{})
-		method := v.MethodByName(head)
-		if method.IsValid() {
-			in := make([]reflect.Value, 4)
-			in[0] = reflect.ValueOf(c)
-			in[1] = reflect.ValueOf(head)
-			in[2] = reflect.ValueOf(data)
-			in[3] = reflect.ValueOf(echoList)
-			defer func() string {
-				if r := recover(); r != nil {
-					utils.CurrentView = "main"
-					utils.ErrorMsg = "处理消息 " + head + " 异常"
-					filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
-					utils.ErrorFullTrace = filteredStack
-				}
-				return ""
-			}()
-			method.Call(in)
+		methodName = echoList[0]
+	} else {
+		noticeType := data["post_type"].(string)
+		if noticeType == "notice" {
+			if data["sub_type"] != nil {
+				noticeType = data["sub_type"].(string)
+			} else {
+				noticeType = data["notice_type"].(string)
+			}
 		}
+		// noticeType 是小写下划线的，需要转换为大驼峰
+		nameList := strings.Split(noticeType, "_")
+		for _, name := range nameList {
+			firstChar := name[0]
+			methodName += string(firstChar-32) + name[1:]
+		}
+	}
+
+	v := reflect.ValueOf(MsgFunc{})
+	method := v.MethodByName(methodName)
+	if method.IsValid() {
+		in := make([]reflect.Value, 4)
+		in[0] = reflect.ValueOf(c)
+		in[1] = reflect.ValueOf(methodName)
+		in[2] = reflect.ValueOf(data)
+		in[3] = reflect.ValueOf(echoList)
+		defer func() string {
+			if r := recover(); r != nil {
+				utils.CurrentView = "main"
+				utils.ErrorMsg = "处理消息 " + methodName + " 异常"
+				filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
+				utils.ErrorFullTrace = filteredStack
+			}
+			return ""
+		}()
+		method.Call(in)
 	}
 }

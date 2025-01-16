@@ -81,3 +81,9 @@ func WriteLogToFile(logMessage string) error {
 func RandInt(min, max int) int {
 	return min + rand.Intn(max-min+1)
 }
+
+// GetTimeStr 将时间戳转换为字符串：2021-01-01 12:00:00
+func GetTimeStr(timeUnix float64) string {
+	t := time.Unix(int64(timeUnix), 0)
+	return t.Format("2006-01-02 15:04:05")
+}

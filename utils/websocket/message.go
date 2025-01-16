@@ -54,15 +54,17 @@ func (m MsgFunc) GetFriendList(c *Client, head string, msg map[string]interface{
 				user["remark"] = userInfo.(map[string]interface{})["remark"]
 				user["user_id"] = userInfo.(map[string]interface{})["user_id"]
 				p := pinyin.NewArgs()
-				pyNameList := pinyin.Pinyin(user["nickname"].(string), p)
+				pyNameList := pinyin.Pinyin(user["nickname"].(string)+user["remark"].(string), p)
 				pyName := ""
 				for _, v := range pyNameList {
 					pyName += v[0]
 				}
 				if pyName == "" {
 					user["py_start"] = user["nickname"].(string)[:1]
+					user["py_filter"] = user["nickname"].(string)
 				} else {
 					user["py_start"] = fmt.Sprintf("%c", pyName[0]-32)
+					user["py_filter"] = user["nickname"].(string) + user["remark"].(string) + pyName
 				}
 				backList = append(backList, user)
 			}
@@ -96,8 +98,10 @@ func (m MsgFunc) GetGroupList(c *Client, head string, msg map[string]interface{}
 		}
 		if pyName == "" {
 			user["py_start"] = user["group_name"].(string)[:1]
+			user["py_filter"] = user["group_name"].(string)
 		} else {
 			user["py_start"] = fmt.Sprintf("%c", pyName[0]-32)
+			user["py_filter"] = user["group_name"].(string) + pyName
 		}
 		backList = append(backList, user)
 	}
@@ -126,7 +130,29 @@ func (m MsgFunc) GetChatHistoryFist(c *Client, head string, msg map[string]inter
 	}
 }
 
-// =======================
+// Notice 方法 ========================================
+
+// MessageSent Notice 收到自己发送的消息
+func (m MsgFunc) MessageSent(c *Client, head string, msg map[string]interface{}, echoList []string) {
+	m.Message(c, head, msg, echoList)
+}
+
+// Message Notice 收到的消息
+func (m MsgFunc) Message(c *Client, head string, msg map[string]interface{}, echoList []string) {
+	var senderId float64
+	if msg["group_id"] != nil {
+		senderId = msg["group_id"].(float64)
+	} else {
+		senderId = msg["real_id"].(float64)
+	}
+
+	if utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
+		singleMsg := parseMessageBody(msg)
+		utils.RuntimeData["messageList"] = append(utils.RuntimeData["messageList"].([]map[string]interface{}), singleMsg)
+	}
+}
+
+// 私有方法 ========================================
 
 func reloadUser(c *Client) {
 	c.SendMessage("get_friends_with_category", nil, "GetFriendList")

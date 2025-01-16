@@ -4,6 +4,8 @@ import (
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/sahilm/fuzzy"
+	"sort"
 	"strings"
 
 	"github.com/76creates/stickers/flexbox"
@@ -14,23 +16,26 @@ import (
 )
 
 type item struct {
-	title string
-	desc  string
-	id    float64
+	title       string
+	filterTitle string
+	desc        string
+	id          float64
 }
 
 func (i item) Title() string       { return i.title }
+func (i item) FilterTitle() string { return i.filterTitle }
 func (i item) Description() string { return i.desc }
 func (i item) Id() float64         { return i.id }
-func (i item) FilterValue() string { return i.title }
+func (i item) FilterValue() string { return i.filterTitle }
 
 type ChatModel struct {
 	tipStr      string            // 提示信息
 	flexBox     *flexbox.FlexBox  // 基础布局
-	inputs      []textinput.Model // 输入框
+	inputs      []textinput.Model // 登录输入框
 	focusIndex  int
-	list        list.Model // 好友列表
-	msgViewList list.Model // 消息列表
+	list        list.Model      // 好友列表
+	msgViewList list.Model      // 消息列表
+	sendInput   textinput.Model // 发送消息输入框
 }
 
 var WebSocketClient *websocket.Client
@@ -49,7 +54,7 @@ func InitialChatModel() ChatModel {
 	flexBox := flexbox.New(30, 10)
 	rows := []*flexbox.Row{
 		flexBox.NewRow().AddCells(
-			flexbox.NewCell(15, 10),
+			flexbox.NewCell(17, 10),
 			flexbox.NewCell(30, 10),
 		),
 		flexBox.NewRow().AddCells(
@@ -76,6 +81,10 @@ func InitialChatModel() ChatModel {
 		t.Prompt = ""
 		inputs[i] = t
 	}
+	var tMsg textinput.Model
+	tMsg = textinput.New()
+	tMsg.Placeholder = "发送……"
+	tMsg.Prompt = ""
 	// 好友列表
 	selectTitleStyle := lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(mainColor).Foreground(mainColor).Padding(0, 0, 0, 1)
 	selectTitleStyleDark := lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(mainFontColor).Foreground(mainFontColor).Padding(0, 0, 0, 1)
@@ -92,16 +101,18 @@ func InitialChatModel() ChatModel {
 	userList := list.New([]list.Item{item{title: "", desc: ""}}, delegateItemList, 0, 0)
 	userList.Title = "用户列表"
 	userList.FilterInput.Prompt = "搜索："
-	userList.Styles.Title = lipgloss.NewStyle().Background(mainColor).Foreground(mainReverseFontColor).Padding(0, 1)
+	userList.Filter = UserFilter
+	userList.Styles.Title = titleStyle
 	userList.SetShowStatusBar(false)
 	userList.SetShowHelp(false)
 	setupListKey(&userList)
 	// 消息列表
 	msgList := list.New([]list.Item{item{title: "", desc: ""}}, delegateItemMsg, 0, 0)
+	msgList.Title = "消息"
+	msgList.Styles.Title = titleStyle
 	msgList.SetShowStatusBar(false)
 	msgList.SetShowHelp(false)
 	msgList.SetShowFilter(false)
-	msgList.SetShowTitle(false)
 	msgList.SetShowPagination(false)
 	cleanListKey(&msgList)
 	return ChatModel{
@@ -110,6 +121,7 @@ func InitialChatModel() ChatModel {
 		inputs:      inputs,
 		list:        userList,
 		msgViewList: msgList,
+		sendInput:   tMsg,
 	}
 }
 
@@ -212,6 +224,10 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 						}
 
 						changeChatView(&m, "chat")
+						utils.RuntimeData["chatInfo"] = map[string]interface{}{
+							"title": selectedItem.Title(),
+							"id":    selectedItem.Id(),
+						}
 					}
 				}
 			}
@@ -246,18 +262,20 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 					}
 					longNick := v["longNick"].(string)
 					if longNick == "" {
-						longNick = "~"
+						longNick = "[这个人很懒什么都没写]"
 					}
 					items = append(items, item{
-						title: showName,
-						desc:  longNick,
-						id:    v["user_id"].(float64),
+						title:       showName,
+						filterTitle: v["py_filter"].(string),
+						desc:        longNick,
+						id:          v["user_id"].(float64),
 					})
 				} else {
 					items = append(items, item{
-						title: v["group_name"].(string),
-						desc:  "[群聊]",
-						id:    v["group_id"].(float64),
+						title:       v["group_name"].(string),
+						filterTitle: v["py_filter"].(string),
+						desc:        "[群聊]",
+						id:          v["group_id"].(float64),
 					})
 				}
 			}
@@ -290,17 +308,19 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 				})
 			}
 			m.msgViewList.SetItems(items)
+			m.msgViewList.Title = utils.RuntimeData["chatInfo"].(map[string]interface{})["title"].(string)
 		}
 
+		var listCmd tea.Cmd
 		if pointStatue == "chat" {
-			var cmda tea.Cmd
-			m.msgViewList, cmda = m.msgViewList.Update(msg)
-			return m, cmda
+			m.msgViewList, listCmd = m.msgViewList.Update(msg)
 		} else {
-			var cmd tea.Cmd
-			m.list, cmd = m.list.Update(msg)
-			return m, cmd
+			m.list, listCmd = m.list.Update(msg)
 		}
+
+		var cmdSi tea.Cmd
+		m.sendInput, cmdSi = m.sendInput.Update(msg)
+		return m, tea.Batch(cmdSi, listCmd)
 	}
 
 	return m, nil
@@ -351,19 +371,22 @@ func (m ChatModel) View() (s string) {
 				b.WriteRune('\n')
 			}
 		}
-		titleStyle := lipgloss.NewStyle().Background(mainColor).Foreground(mainReverseFontColor).Render
-		// 新建一个
-		mainGrid.SetContent(titleStyle(" 连接到 OneBot ") + "\n\n" + b.String())
+		mainGrid.SetContent(titleStyle.Render(" 连接到 OneBot ") + "\n\n" + b.String())
 		mainGrid.SetStyle(lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center))
 	} else if utils.LoginStatus["statue"] == true {
+		// 输入框（占满宽度）
+		m.sendInput.Width = mainGrid.GetWidth() - w - 5
+		sendInputStyle := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(mainFontColor).Foreground(mainFontColor).MarginLeft(3)
+		// 更新状态
 		mainGrid.SetContent("")
 		mainGrid.SetStyle(lipgloss.NewStyle())
 		m.tipStr = "已连接：" + utils.RuntimeData["botInfo"].(map[string]interface{})["app_name"].(string)
-
+		// 更新列表
 		m.list.SetSize(listGrid.GetWidth()-w, listGrid.GetHeight()-h)
 		listGrid.SetContent(listStyle.Render(m.list.View()))
-		m.msgViewList.SetSize(mainGrid.GetWidth()-w, mainGrid.GetHeight()-h)
-		mainGrid.SetContent(listStyle.Render(m.msgViewList.View()))
+		m.msgViewList.SetSize(mainGrid.GetWidth()-w, mainGrid.GetHeight()-h-2)
+		// 返回绘制
+		mainGrid.SetContent(listStyle.Render(m.msgViewList.View()) + "\n " + sendInputStyle.Render(m.sendInput.View()))
 	}
 
 	SetControlBar(m.flexBox, controlList, m.tipStr)
@@ -377,12 +400,16 @@ func changeChatView(m *ChatModel, viewName string) {
 	msgViewList := &m.msgViewList
 	switch viewName {
 	case "list":
+		// 输入框
+		m.sendInput.Blur()
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemList)
 		// 切换案件注册
 		setupListKey(chatViewlist)
 		cleanListKey(msgViewList)
 	case "chat":
+		// 输入框
+		m.sendInput.Focus()
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemListDark)
 		// 取消搜索状态
@@ -430,4 +457,17 @@ func cleanListKey(l *list.Model) {
 	l.KeyMap.ShowFullHelp = key.NewBinding()
 	l.KeyMap.CloseFullHelp = key.NewBinding()
 	l.KeyMap.Quit = key.NewBinding()
+}
+
+func UserFilter(term string, targets []string) []list.Rank {
+	ranks := fuzzy.Find(term, targets)
+	sort.Stable(ranks)
+	result := make([]list.Rank, len(ranks))
+	for i, r := range ranks {
+		result[i] = list.Rank{
+			Index:          r.Index,
+			MatchedIndexes: r.MatchedIndexes,
+		}
+	}
+	return result
 }

@@ -26,7 +26,8 @@ var (
 	mainFontColor        = lipgloss.AdaptiveColor{Light: "#51534f", Dark: "#ffffff"}
 	mainReverseFontColor = lipgloss.AdaptiveColor{Light: "#ffffff", Dark: "#3a3a3a"}
 
-	baseLink = lipgloss.NewStyle().Foreground(mainColor).Underline(true)
+	baseLink   = lipgloss.NewStyle().Foreground(mainColor).Underline(true)
+	titleStyle = lipgloss.NewStyle().Background(mainColor).Foreground(mainReverseFontColor).Padding(0, 1)
 
 	testStyle = lipgloss.NewStyle().Background(mainColor)
 	// 控制指示器样式
