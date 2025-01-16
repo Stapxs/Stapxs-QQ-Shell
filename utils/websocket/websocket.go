@@ -1,7 +1,12 @@
 package websocket
 
 import (
+	"encoding/json"
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"log"
+	"reflect"
+	"runtime/debug"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -38,9 +43,24 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// SendMessage 添加消息到发送队列
-func (c *Client) SendMessage(message string) {
+// SendRawMessage 添加消息到发送队列
+func (c *Client) SendRawMessage(message string) {
 	c.sendQueue <- message
+}
+
+// SendMessage 发送 OneBot 消息
+func (c *Client) SendMessage(name string, value map[string]interface{}, echo string) {
+	if value == nil {
+		value = make(map[string]interface{})
+	}
+	data := map[string]interface{}{
+		"action": name,
+		"params": value,
+		"echo":   echo,
+	}
+	message, _ := json.Marshal(data)
+	messageStr := string(message)
+	c.SendRawMessage(messageStr)
 }
 
 // Close 关闭 WebSocket 连接
@@ -58,11 +78,10 @@ func (c *Client) Close() {
 func (c *Client) readLoop() {
 	for {
 		_, message, err := c.conn.ReadMessage()
-		if err != nil {
-			log.Printf("读取消息失败: %v\n", err)
-			break
+		if err == nil && string(message) != "" {
+			msg := string(message)
+			parseMessage(c, msg)
 		}
-		log.Printf("收到消息: %s\n", string(message))
 	}
 }
 
@@ -73,6 +92,40 @@ func (c *Client) writeLoop() {
 		if err != nil {
 			log.Printf("发送消息失败: %v\n", err)
 			break
+		}
+	}
+}
+
+// ========================================
+
+func parseMessage(c *Client, message string) {
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(message), &data)
+	if err != nil {
+		return
+	}
+	if _, ok := data["echo"]; ok {
+		echoList := strings.Split(data["echo"].(string), "_")
+		head := echoList[0]
+
+		v := reflect.ValueOf(MsgFunc{})
+		method := v.MethodByName(head)
+		if method.IsValid() {
+			in := make([]reflect.Value, 4)
+			in[0] = reflect.ValueOf(c)
+			in[1] = reflect.ValueOf(head)
+			in[2] = reflect.ValueOf(data)
+			in[3] = reflect.ValueOf(echoList)
+			defer func() string {
+				if r := recover(); r != nil {
+					utils.CurrentView = "main"
+					utils.ErrorMsg = "处理消息 " + head + " 异常"
+					filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
+					utils.ErrorFullTrace = filteredStack
+				}
+				return ""
+			}()
+			method.Call(in)
 		}
 	}
 }
