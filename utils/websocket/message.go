@@ -146,7 +146,7 @@ func (m MsgFunc) Message(c *Client, head string, msg map[string]interface{}, ech
 		senderId = msg["real_id"].(float64)
 	}
 
-	if utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
+	if utils.RuntimeData["chatInfo"] != nil && utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
 		singleMsg := parseMessageBody(msg)
 		utils.RuntimeData["messageList"] = append(utils.RuntimeData["messageList"].([]map[string]interface{}), singleMsg)
 	}
@@ -198,7 +198,7 @@ func getRawMessage(messageItem []interface{}) string {
 		case "bface":
 			finalStr += data["text"].(string)
 		case "image":
-			if data["summary"] != nil || data["summary"] != "" {
+			if data["summary"] != nil && data["summary"] != "" {
 				finalStr += data["summary"].(string)
 			} else {
 				finalStr += "[图片]"
@@ -216,4 +216,16 @@ func getRawMessage(messageItem []interface{}) string {
 		}
 	}
 	return finalStr
+}
+
+// GetTypesInMessage 获取消息中的类型
+func GetTypesInMessage(messageItem []interface{}) []string {
+	types := make([]string, 0)
+	for _, item := range messageItem {
+		msgType := item.(map[string]interface{})["type"].(string)
+		if !utils.InArray(types, msgType) {
+			types = append(types, msgType)
+		}
+	}
+	return types
 }

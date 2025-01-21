@@ -87,3 +87,12 @@ func GetTimeStr(timeUnix float64) string {
 	t := time.Unix(int64(timeUnix), 0)
 	return t.Format("2006-01-02 15:04:05")
 }
+
+func InArray(array []string, item string) bool {
+	for _, v := range array {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}

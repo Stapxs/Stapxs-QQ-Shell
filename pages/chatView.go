@@ -1,9 +1,11 @@
 package pages
 
 import (
+	"bytes"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/mdp/qrterminal/v3"
 	"github.com/sahilm/fuzzy"
 	"sort"
 	"strings"
@@ -15,27 +17,42 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type item struct {
+type userItem struct {
 	title       string
 	filterTitle string
 	desc        string
 	id          float64
 }
 
-func (i item) Title() string       { return i.title }
-func (i item) FilterTitle() string { return i.filterTitle }
-func (i item) Description() string { return i.desc }
-func (i item) Id() float64         { return i.id }
-func (i item) FilterValue() string { return i.filterTitle }
+func (i userItem) Title() string       { return i.title }
+func (i userItem) FilterTitle() string { return i.filterTitle }
+func (i userItem) Description() string { return i.desc }
+func (i userItem) Id() float64         { return i.id }
+func (i userItem) FilterValue() string { return i.filterTitle }
+
+type msgItem struct {
+	title      string
+	desc       string
+	id         float64
+	rawMessage []interface{}
+}
+
+func (i msgItem) Title() string             { return i.title }
+func (i msgItem) Description() string       { return i.desc }
+func (i msgItem) Id() float64               { return i.id }
+func (i msgItem) RawMessage() []interface{} { return i.rawMessage }
+func (i msgItem) FilterValue() string       { return i.desc }
 
 type ChatModel struct {
-	tipStr      string            // 提示信息
-	flexBox     *flexbox.FlexBox  // 基础布局
-	inputs      []textinput.Model // 登录输入框
-	focusIndex  int
-	list        list.Model      // 好友列表
-	msgViewList list.Model      // 消息列表
-	sendInput   textinput.Model // 发送消息输入框
+	tipStr            string            // 提示信息
+	flexBox           *flexbox.FlexBox  // 基础布局
+	inputs            []textinput.Model // 登录输入框
+	focusIndex        int
+	list              list.Model // 好友列表
+	msgViewList       list.Model // 消息列表
+	appendControlList map[string]string
+	viewImage         string
+	sendInput         textinput.Model // 发送消息输入框
 }
 
 var WebSocketClient *websocket.Client
@@ -59,8 +76,8 @@ func InitialChatModel() ChatModel {
 		),
 		flexBox.NewRow().AddCells(
 			flexbox.NewCell(1, 1),
-			flexbox.NewCell(14, 1),
-			flexbox.NewCell(10, 1).SetStyle(tipStyle),
+			flexbox.NewCell(19, 1),
+			flexbox.NewCell(5, 1).SetStyle(tipStyle),
 			flexbox.NewCell(1, 1),
 		),
 	}
@@ -98,7 +115,7 @@ func InitialChatModel() ChatModel {
 	delegateItemMsg.Styles.SelectedDesc = selectTitleStyleMsg.Foreground(mainColorDark)
 	delegateItemMsgDark.Styles.SelectedTitle = selectTitleStyleMsgDark
 	delegateItemMsgDark.Styles.SelectedDesc = selectTitleStyleMsgDark.Foreground(mainFontColor)
-	userList := list.New([]list.Item{item{title: "", desc: ""}}, delegateItemList, 0, 0)
+	userList := list.New([]list.Item{userItem{title: "", desc: ""}}, delegateItemList, 0, 0)
 	userList.Title = "用户列表"
 	userList.FilterInput.Prompt = "搜索："
 	userList.Filter = UserFilter
@@ -107,7 +124,7 @@ func InitialChatModel() ChatModel {
 	userList.SetShowHelp(false)
 	setupListKey(&userList)
 	// 消息列表
-	msgList := list.New([]list.Item{item{title: "", desc: ""}}, delegateItemMsg, 0, 0)
+	msgList := list.New([]list.Item{msgItem{title: "", desc: ""}}, delegateItemMsg, 0, 0)
 	msgList.Title = "消息"
 	msgList.Styles.Title = titleStyle
 	msgList.SetShowStatusBar(false)
@@ -122,6 +139,7 @@ func InitialChatModel() ChatModel {
 		list:        userList,
 		msgViewList: msgList,
 		sendInput:   tMsg,
+		viewImage:   "",
 	}
 }
 
@@ -132,28 +150,31 @@ func (m ChatModel) Init() tea.Cmd {
 }
 
 func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
+	m.appendControlList = make(map[string]string)
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.flexBox.SetWidth(msg.Width)
 		m.flexBox.SetHeight(msg.Height)
 		return m, nil
 	case tea.KeyMsg:
+		m.viewImage = ""
+
 		s := msg.String()
-		switch msg.String() {
-		case "tab", "shift+tab", "enter", "up", "down":
-			if WebSocketClient == nil {
-				if s == "up" || s == "shift+tab" {
+		if WebSocketClient == nil {
+			// 未连接
+			if utils.InArray([]string{"tab", "enter", "up", "down"}, s) {
+				// 连接输入框焦点控制
+				if s == "up" {
 					m.focusIndex--
 				} else {
 					m.focusIndex++
 				}
-
 				if m.focusIndex > len(m.inputs) {
 					m.focusIndex = 0
 				} else if m.focusIndex < 0 {
 					m.focusIndex = len(m.inputs)
 				}
-
 				// 如果是最后一个输入框，按下 enter 键则连接到 OneBot
 				if m.focusIndex == len(m.inputs) {
 					if WebSocketClient != nil {
@@ -176,7 +197,7 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 						pointStatue = "list"
 					}
 				}
-
+				// 刷新输入框
 				cmdList := make([]tea.Cmd, len(m.inputs))
 				for i := 0; i <= len(m.inputs)-1; i++ {
 					if i == m.focusIndex {
@@ -185,53 +206,86 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 					}
 					m.inputs[i].Blur()
 				}
-
 				return m, tea.Batch(cmdList...)
-			} else if utils.LoginStatus["statue"] == true {
-				if s == "enter" {
-					if pointStatue == "list" || pointStatue == "list-search" {
-						selectedItem := m.list.SelectedItem().(item)
-						// 从 userList 中获取完整信息
-						selectedUserInfo := map[string]interface{}{}
-						for _, v := range utils.RuntimeData["userList"].([]map[string]interface{}) {
-							id := v["user_id"]
-							if id == nil {
-								id = v["group_id"]
-							}
-							if id.(float64) == selectedItem.Id() {
-								selectedUserInfo = v
-								break
-							}
+			}
+		} else if utils.LoginStatus["statue"] == true {
+			// 已连接
+			if s == "enter" {
+				if pointStatue == "list" || pointStatue == "list-search" {
+					selectedItem := m.list.SelectedItem().(userItem)
+					// 从 userList 中获取完整信息
+					selectedUserInfo := map[string]interface{}{}
+					for _, v := range utils.RuntimeData["userList"].([]map[string]interface{}) {
+						id := v["user_id"]
+						if id == nil {
+							id = v["group_id"]
 						}
-						//如果有 group_name 则为群聊
-						userType := "private"
-						if selectedUserInfo["group_name"] != nil {
-							userType = "group"
+						if id.(float64) == selectedItem.Id() {
+							selectedUserInfo = v
+							break
 						}
-						// 获取聊天记录（首次）
-						if userType == "private" {
-							WebSocketClient.SendMessage("get_friend_msg_history", map[string]interface{}{
-								"user_id":    selectedItem.Id(),
-								"message_id": 0,
-								"count":      20,
-							}, "GetChatHistoryFist")
-						} else {
-							WebSocketClient.SendMessage("get_group_msg_history", map[string]interface{}{
-								"group_id":   selectedItem.Id(),
-								"message_id": 0,
-								"count":      20,
-							}, "GetChatHistoryFist")
-						}
+					}
+					//如果有 group_name 则为群聊
+					userType := "private"
+					if selectedUserInfo["group_name"] != nil {
+						userType = "group"
+					}
+					// 获取聊天记录（首次）
+					if userType == "private" {
+						WebSocketClient.SendMessage("get_friend_msg_history", map[string]interface{}{
+							"user_id":    selectedItem.Id(),
+							"message_id": 0,
+							"count":      20,
+						}, "GetChatHistoryFist")
+					} else {
+						WebSocketClient.SendMessage("get_group_msg_history", map[string]interface{}{
+							"group_id":   selectedItem.Id(),
+							"message_id": 0,
+							"count":      20,
+						}, "GetChatHistoryFist")
+					}
 
-						changeChatView(&m, "chat")
-						utils.RuntimeData["chatInfo"] = map[string]interface{}{
-							"title": selectedItem.Title(),
-							"id":    selectedItem.Id(),
+					changeChatView(&m, "chat")
+					utils.RuntimeData["chatInfo"] = map[string]interface{}{
+						"title": selectedItem.Title(),
+						"id":    selectedItem.Id(),
+						"type":  userType,
+					}
+				} else if pointStatue == "chat" {
+					if m.sendInput.Focused() {
+						// 发送消息
+						if utils.RuntimeData["chatInfo"] != nil {
+							userType := utils.RuntimeData["chatInfo"].(map[string]interface{})["type"].(string)
+							var sendData map[string]interface{}
+							if userType == "private" {
+								sendData = map[string]interface{}{
+									"user_id": utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64),
+									"message": m.sendInput.Value(),
+								}
+							} else {
+								sendData = map[string]interface{}{
+									"group_id": utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64),
+									"message":  m.sendInput.Value(),
+								}
+							}
+							WebSocketClient.SendMessage("send_msg", sendData, "SendMsgBack")
+							// 清空输入框
+							m.sendInput.SetValue("")
+							m.sendInput.Focus()
 						}
+					} else {
+						m.sendInput.Focus()
 					}
 				}
 			}
-		case "left", "right":
+		}
+
+		if s == "esc" {
+			if pointStatue == "chat" {
+				m.sendInput.Blur()
+			}
+		}
+		if utils.InArray([]string{"left", "right"}, s) {
 			if utils.LoginStatus["statue"] == true {
 				if s == "left" && pointStatue == "chat" {
 					changeChatView(&m, "list")
@@ -240,8 +294,26 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 		}
+
+		if s == "v" && !m.sendInput.Focused() {
+			if pointStatue == "chat" {
+				selectedMsg := m.msgViewList.SelectedItem().(msgItem)
+				rawMessage := selectedMsg.RawMessage()
+				msgTypes := websocket.GetTypesInMessage(rawMessage)
+				if utils.InArray(msgTypes, "image") {
+					// 找出 rawMessage 中的第一张图片
+					for _, v := range rawMessage {
+						if v.(map[string]interface{})["type"].(string) == "image" {
+							data := v.(map[string]interface{})["data"].(map[string]interface{})
+							m.viewImage = data["url"].(string)
+						}
+					}
+				}
+			}
+		}
 	}
 
+	// 始终更新内容，这些由任意交互操作或者外部触发的 500ms 被动刷新进行刷新
 	if WebSocketClient == nil {
 		cmdList := make([]tea.Cmd, len(m.inputs))
 		for i := range m.inputs {
@@ -264,14 +336,14 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 					if longNick == "" {
 						longNick = "[这个人很懒什么都没写]"
 					}
-					items = append(items, item{
+					items = append(items, userItem{
 						title:       showName,
 						filterTitle: v["py_filter"].(string),
 						desc:        longNick,
 						id:          v["user_id"].(float64),
 					})
 				} else {
-					items = append(items, item{
+					items = append(items, userItem{
 						title:       v["group_name"].(string),
 						filterTitle: v["py_filter"].(string),
 						desc:        "[群聊]",
@@ -302,13 +374,25 @@ func (m ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 		if utils.RuntimeData["messageList"] != nil {
 			var items []list.Item
 			for _, v := range utils.RuntimeData["messageList"].([]map[string]interface{}) {
-				items = append(items, item{
-					title: v["sender"].(map[string]interface{})["nickname"].(string),
-					desc:  v["rawMessage"].(string),
+				items = append(items, msgItem{
+					title:      v["sender"].(map[string]interface{})["nickname"].(string),
+					desc:       v["rawMessage"].(string),
+					id:         v["messageId"].(float64),
+					rawMessage: v["message"].([]interface{}),
 				})
 			}
 			m.msgViewList.SetItems(items)
 			m.msgViewList.Title = utils.RuntimeData["chatInfo"].(map[string]interface{})["title"].(string)
+		}
+
+		// 检查选中的消息提供附加功能菜单
+		if pointStatue == "chat" {
+			selectedMsg := m.msgViewList.SelectedItem().(msgItem)
+			rawMessage := selectedMsg.RawMessage()
+			msgTypes := websocket.GetTypesInMessage(rawMessage)
+			if utils.InArray(msgTypes, "image") {
+				m.appendControlList["V"] = "查看图片"
+			}
 		}
 
 		var listCmd tea.Cmd
@@ -359,7 +443,19 @@ func (m ChatModel) View() (s string) {
 		controlList = map[string]string{
 			"\uF062|\uF063": "滚动",
 			"\uF060":        "列表",
-			"\U000F060C":    "发送",
+		}
+		if m.sendInput.Focused() {
+			controlList["ESC"] = "取消"
+			controlList["\U000F060C"] = "发送"
+		} else {
+			controlList["\U000F060C"] = "输入"
+		}
+	}
+
+	// 加上 appendControlList
+	if !m.sendInput.Focused() {
+		for k, v := range m.appendControlList {
+			controlList[k] = v
 		}
 	}
 
@@ -371,22 +467,65 @@ func (m ChatModel) View() (s string) {
 				b.WriteRune('\n')
 			}
 		}
-		mainGrid.SetContent(titleStyle.Render(" 连接到 OneBot ") + "\n\n" + b.String())
 		mainGrid.SetStyle(lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center))
+		mainGrid.SetContent(titleStyle.Render(" 连接到 OneBot ") + "\n\n" + b.String())
 	} else if utils.LoginStatus["statue"] == true {
 		// 输入框（占满宽度）
 		m.sendInput.Width = mainGrid.GetWidth() - w - 5
-		sendInputStyle := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(mainFontColor).Foreground(mainFontColor).MarginLeft(3)
+		sendInputStyle := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color("241")).Foreground(mainFontColor).MarginLeft(3)
 		// 更新状态
 		mainGrid.SetContent("")
 		mainGrid.SetStyle(lipgloss.NewStyle())
-		m.tipStr = "已连接：" + utils.RuntimeData["botInfo"].(map[string]interface{})["app_name"].(string)
+		m.tipStr = "已连接"
 		// 更新列表
 		m.list.SetSize(listGrid.GetWidth()-w, listGrid.GetHeight()-h)
 		listGrid.SetContent(listStyle.Render(m.list.View()))
 		m.msgViewList.SetSize(mainGrid.GetWidth()-w, mainGrid.GetHeight()-h-2)
-		// 返回绘制
-		mainGrid.SetContent(listStyle.Render(m.msgViewList.View()) + "\n " + sendInputStyle.Render(m.sendInput.View()))
+		// 绘制聊天区域
+		if m.viewImage == "" {
+			mainGrid.SetContent(listStyle.Render(m.msgViewList.View()) + "\n " + sendInputStyle.Render(m.sendInput.View()))
+		} else {
+			mainGrid.SetStyle(lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center))
+			// 将 URL 生成二维码
+			var buf bytes.Buffer
+			// 生成二维码到缓冲区
+			qrterminal.GenerateWithConfig(m.viewImage, qrterminal.Config{
+				HalfBlocks: true,
+				Level:      qrterminal.M,
+				Writer:     &buf,
+
+				WhiteChar:      qrterminal.WHITE_WHITE,
+				BlackChar:      qrterminal.BLACK_BLACK,
+				WhiteBlackChar: qrterminal.WHITE_BLACK,
+				BlackWhiteChar: qrterminal.BLACK_WHITE,
+			})
+			// 如果把 URL 完整输出需要占的行数 viewImage / 宽度
+			widthGet := mainGrid.GetWidth() - 2
+			urlLine := len(m.viewImage) / widthGet
+			// 将 URL 按宽度插入 \n
+			linedUrl := ""
+			for i := 0; i < urlLine; i++ {
+				linedUrl += m.viewImage[i*widthGet:(i+1)*widthGet] + "\n"
+			}
+			// 从缓冲区获取字符串
+			qrString := buf.String()
+			line := strings.Split(qrString, "\n")
+			if len(line)+urlLine+2 > mainGrid.GetHeight() {
+				var buf1 bytes.Buffer
+				qrterminal.GenerateWithConfig("显示不下", qrterminal.Config{
+					HalfBlocks: true,
+					Level:      qrterminal.M,
+					Writer:     &buf1,
+
+					WhiteChar:      qrterminal.WHITE_WHITE,
+					BlackChar:      qrterminal.BLACK_BLACK,
+					WhiteBlackChar: qrterminal.WHITE_BLACK,
+					BlackWhiteChar: qrterminal.BLACK_WHITE,
+				})
+				qrString = buf1.String()
+			}
+			mainGrid.SetContent(qrString + "\n" + linedUrl + "\n\n" + tipStyle.Render(" • 任意操作退出 • "))
+		}
 	}
 
 	SetControlBar(m.flexBox, controlList, m.tipStr)
@@ -408,8 +547,6 @@ func changeChatView(m *ChatModel, viewName string) {
 		setupListKey(chatViewlist)
 		cleanListKey(msgViewList)
 	case "chat":
-		// 输入框
-		m.sendInput.Focus()
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemListDark)
 		// 取消搜索状态
@@ -419,6 +556,7 @@ func changeChatView(m *ChatModel, viewName string) {
 		// 切换案件注册
 		cleanListKey(chatViewlist)
 		setupListKey(msgViewList)
+		msgViewList.KeyMap.Filter = key.NewBinding() // 消息列表不提供搜索
 	}
 	pointStatue = viewName
 }

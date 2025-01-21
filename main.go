@@ -19,7 +19,7 @@ func main() {
 	// 每秒发送一个 tick 消息用于被动刷新页面
 	go func() {
 		for {
-			time.Sleep(1 * time.Second)
+			time.Sleep(1 * time.Millisecond * 500)
 			p.Send("tick")
 		}
 	}()

@@ -52,8 +52,7 @@ func InitialMainModel() MainModel {
 	return MainModel{
 		flexBox: flexBox,
 		spinner: newSpinner,
-		//timer:   timer.NewWithInterval(time.Second*3, time.Millisecond),
-		timer:     timer.NewWithInterval(time.Millisecond, time.Millisecond),
+		timer:   timer.NewWithInterval(time.Second*3, time.Millisecond),
 		errorText: errorTextList[utils.RandInt(0, len(errorTextList)-1)],
 	}
 }

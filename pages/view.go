@@ -122,6 +122,6 @@ func SetControlBar(flexBox *flexbox.FlexBox, control map[string]string, errorStr
 	}
 	controlRow.GetCell(1).SetContent(helpStyle(controlStr))
 	if len(errorStr) > 0 {
-		controlRow.GetCell(2).SetContent(helpStyle("> " + errorStr[0]))
+		controlRow.GetCell(2).SetContent(helpStyle(errorStr[0]))
 	}
 }
