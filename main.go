@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/Stapxs/Stapxs-QQ-Shell/pages"
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
+	"github.com/Stapxs/Stapxs-QQ-Shell/view"
 	tea "github.com/charmbracelet/bubbletea"
 	"os/exec"
 	"time"
@@ -12,15 +13,15 @@ func main() {
 	_ = exec.Command("title", "Stapxs QQ Shell")
 
 	p := tea.NewProgram(
-		pages.InitialModel(),
+		view.InitialModel(),
 		tea.WithAltScreen(),
 	)
 
-	// 每秒发送一个 tick 消息用于被动刷新页面
+	// 页面数据刷新外部信号
 	go func() {
 		for {
 			time.Sleep(1 * time.Millisecond * 500)
-			p.Send("tick")
+			p.Send(utils.UpdateMsg{})
 		}
 	}()
 

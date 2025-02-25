@@ -1,9 +1,11 @@
-package pages
+package view
 
 import (
 	"fmt"
-	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
+	"math/rand"
 	"time"
+
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -20,21 +22,21 @@ var (
 		"诶嘿！",
 		"看不见看不见！",
 	}
+	errorText = errorTextList[rand.Intn(len(errorTextList))]
 )
 
+// MainModel 主视图元素
 type MainModel struct {
-	flexBox   *flexbox.FlexBox
-	spinner   spinner.Model
-	timer     timer.Model
-	errorText string
+	flexBox *flexbox.FlexBox // 布局框架
+	spinner spinner.Model    // 加载指示器
+	timer   timer.Model      // 加载计时器
 }
 
-func InitialMainModel() MainModel {
-	spinnerStyle := lipgloss.NewStyle().Foreground(mainColor)
-	newSpinner := spinner.New()
-	newSpinner.Style = spinnerStyle
-	newSpinner.Spinner = spinner.Line
-
+// InitialMainModel
+// @Description: 初始化主视图
+// @return *MainModel
+func InitialMainModel() *MainModel {
+	// 初始化布局
 	flexBox := flexbox.New(30, 10)
 	rows := []*flexbox.Row{
 		flexBox.NewRow().AddCells(
@@ -48,16 +50,21 @@ func InitialMainModel() MainModel {
 		),
 	}
 	flexBox.AddRows(rows)
+	// 初始化加载指示器
+	newSpinner := spinner.New()
+	newSpinner.Style = lipgloss.NewStyle().Foreground(mainColor)
+	newSpinner.Spinner = spinner.Line
 
-	return MainModel{
+	return &MainModel{
 		flexBox: flexBox,
 		spinner: newSpinner,
 		timer:   timer.NewWithInterval(time.Second*3, time.Millisecond),
-		errorText: errorTextList[utils.RandInt(0, len(errorTextList)-1)],
 	}
 }
 
+// Init implements View
 func (m MainModel) Init() tea.Cmd {
+	// 启动加载指示器
 	return tea.Batch(m.spinner.Tick, m.timer.Init())
 }
 
@@ -66,51 +73,53 @@ func (m MainModel) Update(msg tea.Msg) (View, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.flexBox.SetWidth(msg.Width)
 		m.flexBox.SetHeight(msg.Height)
-		return m, nil
+		return &m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
+		return &m, cmd
 	case timer.TickMsg:
 		var cmd tea.Cmd
 		m.timer, cmd = m.timer.Update(msg)
-		return m, cmd
+		return &m, cmd
 	default:
-		return m, nil
+		return &m, nil
 	}
 }
 
-func (m MainModel) View() (s string) {
-	textStyle := lipgloss.NewStyle().Foreground(mainColor).Render
-
+func (m MainModel) View() string {
+	// 渲染加载视图
 	str := fmt.Sprintf("%s%s%s",
 		m.spinner.View(),
 		" ",
-		textStyle("初始化中..."),
+		lipgloss.NewStyle().Foreground(mainColor).Render("初始化中..."),
 	)
-	if utils.ErrorMsg == "" && m.timer.Timedout() {
-		utils.CurrentView = "chat"
+
+	// 如果存在 ErrorMsg，此视图将作为错误页使用
+	// 渲染错误页视图
+	if runtime.ErrorMsg == "" && m.timer.Timedout() {
+		runtime.CurrentView = "chat"
 	}
 
 	errorFbStyleTitle := lipgloss.NewStyle().Foreground(mainReverseFontColor).Background(mainColor).Margin(1, 0, 0, 3).Padding(0, 1).Render
 	errorFbStyle := lipgloss.NewStyle().Foreground(mainFontColor).Margin(1, 0, 0, 3).Render
 	errorStyleTitle := lipgloss.NewStyle().Foreground(mainReverseFontColor).Background(lipgloss.Color("#fc5c65")).Margin(1, 0, 0, 3).Padding(0, 1).Render
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#fc5c65")).Margin(1, 0, 0, 3).Render
-	// 此视图有时候也用于全局错误提示
-	if utils.ErrorMsg == "" {
+
+	if runtime.ErrorMsg == "" {
 		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 快速退出 • "))
 		m.flexBox.GetRow(1).GetCell(2).SetContent(str)
 	} else {
 		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 退出 • "))
-		m.flexBox.GetRow(1).GetCell(2).SetContent(helpStyle("> " + utils.ErrorMsg))
+		m.flexBox.GetRow(1).GetCell(2).SetContent(helpStyle("> " + runtime.ErrorMsg))
 		m.flexBox.GetRow(0).GetCell(0).SetContent("" +
 			errorFbStyleTitle("严重异常中断") +
-			errorFbStyle(">> 程序发生了一个严重的异常，"+m.errorText+" <<") +
+			errorFbStyle(">> 程序发生了一个严重的异常，"+errorText+" <<") +
 			errorFbStyle("你可以将此页面截图或复制提交至仓库 issue 来让 Stapxs QQ Shell 变得更好！\n") +
 			errorFbStyle("        > ") +
 			baseLink.Render("https://github.com/Stapxs/Stapxs-QQ-Shell") + "\n" +
 			errorStyleTitle("摘要") +
-			errorStyle(":: "+utils.ErrorMsg+"\n"+utils.ErrorFullTrace),
+			errorStyle(":: "+runtime.ErrorMsg+"\n"+runtime.ErrorFullTrace),
 		)
 	}
 	return m.flexBox.Render()

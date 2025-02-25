@@ -1,23 +1,16 @@
-package pages
+package view
 
 import (
-	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"runtime/debug"
 	"sort"
+
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 
 	"github.com/76creates/stickers/flexbox"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-type View interface {
-	Init() tea.Cmd
-	Update(msg tea.Msg) (View, tea.Cmd)
-	View() string
-}
-
-var WindowWidth = 0
-var WindowHeight = 0
 
 // 全局样式
 var (
@@ -29,42 +22,66 @@ var (
 	baseLink   = lipgloss.NewStyle().Foreground(mainColor).Underline(true)
 	titleStyle = lipgloss.NewStyle().Background(mainColor).Foreground(mainReverseFontColor).Padding(0, 1)
 
-	testStyle = lipgloss.NewStyle().Background(mainColor)
 	// 控制指示器样式
 	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
 	tipStyle  = lipgloss.NewStyle().Align(lipgloss.Right)
 )
 
-type BaseModel struct {
+// 窗口信息
+var (
+	WindowWidth  = 0
+	WindowHeight = 0
+)
+
+// Controller 页面控制器
+type Controller struct {
 	currentView string
 	views       map[string]View
 }
 
-func InitialModel() BaseModel {
+// View 页面视图
+type View interface {
+	Init() tea.Cmd
+	Update(msg tea.Msg) (View, tea.Cmd)
+	View() string
+}
+
+// InitialModel
+// @Description: 初始化页面控制器
+// @return Controller
+func InitialModel() Controller {
 	views := map[string]View{
-		"main": InitialMainModel(), // 加载视图
-		"chat": InitialChatModel(), // 聊天视图
+		"main": InitialMainModel(),
+		"chat": InitialChatModel(),
 	}
-	return BaseModel{
-		currentView: utils.CurrentView,
+	return Controller{
+		currentView: runtime.CurrentView,
 		views:       views,
 	}
 }
 
-func (m BaseModel) Init() tea.Cmd {
+// 视图 ========================================
+
+// Init
+// @Description: 初始化视图
+// @return tea.Cmd
+func (m Controller) Init() tea.Cmd {
 	if view, exists := m.views[m.currentView]; exists {
 		return view.Init()
 	}
 	return nil
 }
 
-func (m BaseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update
+// @Description: 更新视图
+func (m Controller) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// 如果当前视图不等于当前视图, 则更新当前视图
-	if utils.CurrentView != m.currentView {
-		m.currentView = utils.CurrentView
+	if runtime.CurrentView != m.currentView {
+		m.currentView = runtime.CurrentView
 		m.Init()
 	}
 
+	// 全局消息处理
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		WindowWidth = msg.Width
@@ -76,6 +93,7 @@ func (m BaseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// 更新视图（视图附加的 cmd）
 	if view, exists := m.views[m.currentView]; exists {
 		updatedView, cmd := view.Update(msg)
 		m.views[m.currentView] = updatedView
@@ -84,13 +102,16 @@ func (m BaseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m BaseModel) View() string {
+// View
+// @Description: 渲染视图
+// @return string
+func (m Controller) View() string {
 	defer func() string {
 		if r := recover(); r != nil {
-			utils.CurrentView = "main"
-			utils.ErrorMsg = "渲染视图 " + m.currentView + "View 异常"
+			runtime.CurrentView = "main"
+			runtime.ErrorMsg = "渲染视图 " + m.currentView + "View 异常"
 			filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
-			utils.ErrorFullTrace = filteredStack
+			runtime.ErrorFullTrace = filteredStack
 		}
 		return ""
 	}()
@@ -100,8 +121,13 @@ func (m BaseModel) View() string {
 	return "载入入口视图失败"
 }
 
-// ========================================
+// 工具 ========================================
 
+// SetControlBar
+// @Description: 设置控制指示器
+// @param flexBox
+// @param control
+// @param errorStr
 func SetControlBar(flexBox *flexbox.FlexBox, control map[string]string, errorStr ...string) {
 	// flexBox 的最后一行的第二列是控制指示器，第三列是错误信息
 	controlRow := flexBox.GetRow(flexBox.RowsLen() - 1)

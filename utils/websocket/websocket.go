@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 	"log"
 	"reflect"
 	"runtime/debug"
@@ -137,10 +138,10 @@ func parseMessage(c *Client, message string) {
 		in[3] = reflect.ValueOf(echoList)
 		defer func() string {
 			if r := recover(); r != nil {
-				utils.CurrentView = "main"
-				utils.ErrorMsg = "处理消息 " + methodName + " 异常"
+				runtime.CurrentView = "main"
+				runtime.ErrorMsg = "处理消息 " + methodName + " 异常"
 				filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
-				utils.ErrorFullTrace = filteredStack
+				runtime.ErrorFullTrace = filteredStack
 			}
 			return ""
 		}()

@@ -2,19 +2,14 @@ package utils
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 )
 
-var LoginStatus = make(map[string]interface{})
-var RuntimeData = make(map[string]interface{})
-
-var CurrentView = "main"
-var ErrorMsg = ""
-var ErrorFullTrace = ""
+// UpdateMsg 页面固定周期 Update 消息
+type UpdateMsg struct{}
 
 // FilterStack 过滤堆栈信息
 func FilterStack(stack []byte, packageName string) string {
@@ -75,11 +70,6 @@ func WriteLogToFile(logMessage string) error {
 	}
 
 	return nil
-}
-
-// RandInt 生成指定范围内的随机整数
-func RandInt(min, max int) int {
-	return min + rand.Intn(max-min+1)
 }
 
 // GetTimeStr 将时间戳转换为字符串：2021-01-01 12:00:00

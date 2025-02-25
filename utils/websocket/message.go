@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"fmt"
-	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
-	"github.com/mozillazg/go-pinyin"
 	"strings"
+
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
+	"github.com/mozillazg/go-pinyin"
 )
 
 type MsgFunc struct{}
@@ -12,26 +14,26 @@ type MsgFunc struct{}
 // GetVersionInfo 获取版本信息
 func (m MsgFunc) GetVersionInfo(c *Client, head string, msg map[string]interface{}, echoList []string) {
 	// 如果 runtime 存在（即不是第一次连接），且 app_name 不同，重置 runtime
-	if len(utils.RuntimeData) != 0 && utils.RuntimeData["botInfo"] != nil {
-		nowBotName := utils.RuntimeData["botInfo"].(map[string]interface{})["app_name"].(string)
+	if len(runtime.Data) != 0 && runtime.Data["botInfo"] != nil {
+		nowBotName := runtime.Data["botInfo"].(map[string]interface{})["app_name"].(string)
 		if nowBotName != msg["data"].(map[string]interface{})["app_name"].(string) {
-			utils.RuntimeData = make(map[string]interface{})
+			runtime.Data = make(map[string]interface{})
 		}
 	}
-	utils.RuntimeData["botInfo"] = msg["data"]
-	utils.LoginStatus["statue"] = true
+	runtime.Data["botInfo"] = msg["data"]
+	runtime.LoginStatus["statue"] = true
 	c.SendMessage("get_login_info", nil, "GetLoginInfo")
 }
 
 // GetLoginInfo 获取登录信息
 func (m MsgFunc) GetLoginInfo(c *Client, head string, msg map[string]interface{}, echoList []string) {
-	utils.RuntimeData["loginInfo"] = msg["data"]
+	runtime.Data["loginInfo"] = msg["data"]
 
 	userId := msg["data"].(map[string]interface{})["user_id"].(float64)
 	// 如果 runtime 存在（即不是第一次连接），且 userId 不同，重置 runtime
-	if len(utils.RuntimeData) != 0 && utils.RuntimeData["loginInfo"] != nil {
-		if userId != utils.RuntimeData["loginInfo"].(map[string]interface{})["user_id"].(float64) {
-			utils.RuntimeData = make(map[string]interface{})
+	if len(runtime.Data) != 0 && runtime.Data["loginInfo"] != nil {
+		if userId != runtime.Data["loginInfo"].(map[string]interface{})["user_id"].(float64) {
+			runtime.Data = make(map[string]interface{})
 		}
 	}
 
@@ -70,14 +72,14 @@ func (m MsgFunc) GetFriendList(c *Client, head string, msg map[string]interface{
 			}
 		}
 	}
-	// 如果 utils.RuntimeData["userList"] 不为空则追加
-	if utils.RuntimeData["userList"] != nil {
-		utils.RuntimeData["userList"] = append(utils.RuntimeData["userList"].([]map[string]interface{}), backList...)
+	// 如果 runtime.Data["userList"] 不为空则追加
+	if runtime.Data["userList"] != nil {
+		runtime.Data["userList"] = append(runtime.Data["userList"].([]map[string]interface{}), backList...)
 	} else {
-		utils.RuntimeData["userList"] = backList
+		runtime.Data["userList"] = backList
 	}
 	// 将 userList 根据 py_start 排序
-	utils.RuntimeData["userList"] = sortUserList(utils.RuntimeData["userList"].([]map[string]interface{}))
+	runtime.Data["userList"] = sortUserList(runtime.Data["userList"].([]map[string]interface{}))
 }
 
 // GetGroupList 获取群列表
@@ -105,15 +107,15 @@ func (m MsgFunc) GetGroupList(c *Client, head string, msg map[string]interface{}
 		}
 		backList = append(backList, user)
 	}
-	// 如果 utils.RuntimeData["userList"] 不为空则追加
+	// 如果 runtime.Data["userList"] 不为空则追加
 	// PS：它们共用一个列表
-	if utils.RuntimeData["userList"] != nil {
-		utils.RuntimeData["userList"] = append(utils.RuntimeData["userList"].([]map[string]interface{}), backList...)
+	if runtime.Data["userList"] != nil {
+		runtime.Data["userList"] = append(runtime.Data["userList"].([]map[string]interface{}), backList...)
 	} else {
-		utils.RuntimeData["userList"] = backList
+		runtime.Data["userList"] = backList
 	}
 	// 将 userList 根据 py_start 排序
-	utils.RuntimeData["userList"] = sortUserList(utils.RuntimeData["userList"].([]map[string]interface{}))
+	runtime.Data["userList"] = sortUserList(runtime.Data["userList"].([]map[string]interface{}))
 }
 
 // GetChatHistoryFist 获取聊天记录（首次）
@@ -126,7 +128,7 @@ func (m MsgFunc) GetChatHistoryFist(c *Client, head string, msg map[string]inter
 			singleMsg := parseMessageBody(message.(map[string]interface{}))
 			singleMsgList[i] = singleMsg
 		}
-		utils.RuntimeData["messageList"] = singleMsgList
+		runtime.Data["messageList"] = singleMsgList
 	}
 }
 
@@ -146,9 +148,9 @@ func (m MsgFunc) Message(c *Client, head string, msg map[string]interface{}, ech
 		senderId = msg["real_id"].(float64)
 	}
 
-	if utils.RuntimeData["chatInfo"] != nil && utils.RuntimeData["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
+	if runtime.Data["chatInfo"] != nil && runtime.Data["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
 		singleMsg := parseMessageBody(msg)
-		utils.RuntimeData["messageList"] = append(utils.RuntimeData["messageList"].([]map[string]interface{}), singleMsg)
+		runtime.Data["messageList"] = append(runtime.Data["messageList"].([]map[string]interface{}), singleMsg)
 	}
 }
 
