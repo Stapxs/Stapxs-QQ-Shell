@@ -18,12 +18,14 @@ func changeChatView(model *ChatModel, viewName string) {
 		model.sendInput.Blur()
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemList)
+		msgViewList.SetDelegate(delegateItemListBlur)
 		// 切换案件注册
 		setupListKey(chatViewlist)
 		cleanListKey(msgViewList)
 	case "chat":
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemListBlur)
+		msgViewList.SetDelegate(delegateItemList)
 		// 取消搜索状态
 		if model.tags.pointStatue == "list-search" {
 			model.data.list.ResetFilter()

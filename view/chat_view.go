@@ -2,13 +2,15 @@ package view
 
 import (
 	"bytes"
+	"sort"
+	"strconv"
+	"strings"
+
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/mdp/qrterminal/v3"
 	"github.com/sahilm/fuzzy"
-	"sort"
-	"strings"
 
 	"github.com/76creates/stickers/flexbox"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils/websocket"
@@ -223,7 +225,8 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 		if inputKey == "enter" {
 			if runtime.LoginStatus["statue"] == true {
 				// 已连接，对页面上的所有回车操作进行处理
-				if model.tags.pointStatue == "list" || model.tags.pointStatue == "list-search" {
+				if model.data.list.SelectedItem() != nil &&
+					(model.tags.pointStatue == "list" || model.tags.pointStatue == "list-search") {
 					// 列表视图，进入聊天视图
 					selectedItem := model.data.list.SelectedItem().(userItem)
 					model.loadChat(selectedItem)
@@ -250,7 +253,7 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		// >> 视图切换
 		if utils.InArray([]string{"left", "right"}, inputKey) {
-			if runtime.LoginStatus["statue"] == true {
+			if runtime.LoginStatus["statue"] == true && !model.sendInput.Focused() {
 				if inputKey == "left" && model.tags.pointStatue == "chat" {
 					changeChatView(model, "list")
 				} else if inputKey == "right" && model.tags.pointStatue == "list" {
@@ -285,20 +288,14 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return model, tea.Batch(cmdList...)
 		}
-
-		// 刷新列表
-		var listCmd tea.Cmd
-		if model.tags.pointStatue == "chat" {
-			model.data.msgViewList, listCmd = model.data.msgViewList.Update(msg)
-		} else {
-			model.data.list, listCmd = model.data.list.Update(msg)
-		}
-
-		var cmdSi tea.Cmd
-		model.sendInput, cmdSi = model.sendInput.Update(msg)
-		return model, tea.Batch(cmdSi, listCmd)
 	// 周期触发器事件 ========================================
 	case utils.UpdateMsg:
+		// 检查连接状态
+		if webSocketClient != nil && !webSocketClient.IsConnected() {
+			webSocketClient = nil
+			model.tags.pointStatue = "login"
+		}
+
 		// 刷新 UI 数据
 		if runtime.LoginStatus["statue"] == true {
 			// >> 好友列表
@@ -306,8 +303,22 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 				// 刷新好友列表
 				listSize := len(model.data.list.Items())
 				items := model.getFriendList()
-				if len(items) != listSize {
+				if model.data.list.FilterState() != list.Filtering &&
+					(len(items) != listSize || runtime.UpdateList) {
+					runtime.UpdateList = false
 					model.data.list.SetItems(items)
+					// 刷新光标位置（如果打开了聊天，并且光标不在列表上）
+					if runtime.Data["chatInfo"] != nil && model.tags.pointStatue == "chat" {
+						var chatId = runtime.Data["chatInfo"].(map[string]interface{})["id"].(float64)
+						// 从 model.data.list 中寻找 index
+						for i, v := range items {
+							if v.(userItem).Id() == chatId {
+								model.data.list.Select(i)
+								break
+							}
+						}
+
+					}
 				}
 				// 刷新搜索
 				if model.tags.pointStatue == "list" || model.tags.pointStatue == "list-search" {
@@ -319,9 +330,9 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 					}
 				}
 				if model.data.list.FilterState() == list.FilterApplied {
-					model.data.list.Title = "用户列表（筛选）"
+					model.data.list.Title = "筛选：用户列表"
 				} else {
-					model.data.list.Title = "用户列表"
+					model.data.list.Title = "用户列表（" + strconv.Itoa(len(model.data.list.Items())) + "）"
 				}
 			}
 			// >> 消息列表
@@ -342,22 +353,33 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 
 			// >> 刷新功能指示器
 			if model.tags.pointStatue == "chat" {
-				selectedMsg := model.data.msgViewList.SelectedItem().(msgItem)
-				rawMessage := selectedMsg.RawMessage()
-				msgTypes := websocket.GetTypesInMessage(rawMessage)
-				if utils.InArray(msgTypes, "image") {
-					model.data.appendControlList["V"] = "查看图片"
+				if model.data.msgViewList.SelectedItem() != nil {
+					selectedMsg := model.data.msgViewList.SelectedItem().(msgItem)
+					rawMessage := selectedMsg.RawMessage()
+					msgTypes := websocket.GetTypesInMessage(rawMessage)
+					if utils.InArray(msgTypes, "image") {
+						model.data.appendControlList["V"] = "查看图片"
+					}
 				}
 			}
 		}
 	}
 
-	// 兜底
-	return model, nil
+	// 刷新列表
+	var listCmd tea.Cmd
+	if model.tags.pointStatue == "chat" {
+		model.data.msgViewList, listCmd = model.data.msgViewList.Update(msg)
+	} else {
+		model.data.list, listCmd = model.data.list.Update(msg)
+	}
+
+	var cmdSi tea.Cmd
+	model.sendInput, cmdSi = model.sendInput.Update(msg)
+	return model, tea.Batch(cmdSi, listCmd)
 }
 
 func (model *ChatModel) View() (s string) {
-	sendInputStyle := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color("241")).Foreground(mainFontColor).MarginLeft(3)
+	sendInputStyle := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(mainFontColor).Foreground(mainFontColor).MarginLeft(3)
 	centerStyle := lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center)
 
 	listGrid := model.flexBox.GetRow(0).GetCell(0)

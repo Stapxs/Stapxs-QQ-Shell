@@ -152,6 +152,43 @@ func (m MsgFunc) Message(c *Client, head string, msg map[string]interface{}, ech
 		singleMsg := parseMessageBody(msg)
 		runtime.Data["messageList"] = append(runtime.Data["messageList"].([]map[string]interface{}), singleMsg)
 	}
+
+	// 刷新用户列表中的时间字段
+	if runtime.Data["userList"] != nil {
+		userList := runtime.Data["userList"].([]map[string]interface{})
+		for i, user := range userList {
+			var itemId float64
+			if user["user_id"] != nil {
+				itemId = user["user_id"].(float64)
+			} else {
+				itemId = user["group_id"].(float64)
+			}
+			if itemId == senderId {
+				userList[i]["time"] = msg["time"]
+				userList[i]["raw_message"] = getRawMessage(msg["message"].([]interface{}))
+				break
+			}
+		}
+		// 对整个列表按 time 排序
+		for i := 0; i < len(userList); i++ {
+			for j := i + 1; j < len(userList); j++ {
+				timeI := float64(0)
+				timeJ := float64(0)
+				if userList[i]["time"] != nil {
+					timeI = userList[i]["time"].(float64)
+				}
+				if userList[j]["time"] != nil {
+					timeJ = userList[j]["time"].(float64)
+				}
+				if timeI < timeJ {
+					userList[i], userList[j] = userList[j], userList[i]
+				}
+			}
+		}
+
+		runtime.Data["userList"] = userList
+		runtime.UpdateList = true
+	}
 }
 
 // 私有方法 ========================================

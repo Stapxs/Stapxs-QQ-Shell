@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
+	"time"
+
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
 	"github.com/Stapxs/Stapxs-QQ-Shell/view"
 	tea "github.com/charmbracelet/bubbletea"
-	"os/exec"
-	"time"
 )
 
 func main() {
@@ -25,7 +26,8 @@ func main() {
 		}
 	}()
 
-	if err := p.Start(); err != nil {
+	_, err := p.Run()
+	if err != nil {
 		fmt.Printf("程序运行出错: %v", err)
 	}
 }

@@ -1,7 +1,6 @@
 package view
 
 import (
-	"fmt"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils/websocket"
 	"github.com/charmbracelet/bubbles/list"
@@ -102,7 +101,7 @@ func (model *ChatModel) sendMessage() {
 		webSocketClient.SendMessage("send_msg", sendData, "SendMsgBack")
 		// 清空输入框
 		model.sendInput.SetValue("")
-		model.sendInput.Focus()
+		model.sendInput.Blur()
 	}
 }
 
@@ -119,21 +118,25 @@ func (model *ChatModel) getFriendList() []list.Item {
 			if data["remark"].(string) != "" {
 				showName = data["remark"].(string) + "(" + data["nickname"].(string) + ")"
 			}
-			longNick := data["longNick"].(string)
-			if longNick == "" {
-				longNick = fmt.Sprintf("%.0f", data["user_id"].(float64))
+			var desc = ""
+			if data["raw_message"] != nil {
+				desc = data["raw_message"].(string)
 			}
 			items = append(items, userItem{
 				title:       showName,
 				filterTitle: data["py_filter"].(string),
-				desc:        longNick,
+				desc:        desc,
 				id:          data["user_id"].(float64),
 			})
 		} else {
+			var desc = ""
+			if data["raw_message"] != nil {
+				desc = data["raw_message"].(string)
+			}
 			items = append(items, userItem{
 				title:       data["group_name"].(string),
 				filterTitle: data["py_filter"].(string),
-				desc:        "[群聊]",
+				desc:        desc,
 				id:          data["group_id"].(float64),
 			})
 		}

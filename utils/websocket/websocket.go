@@ -2,13 +2,11 @@ package websocket
 
 import (
 	"encoding/json"
-	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
-	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
-	"log"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"sync"
+
+	"github.com/Stapxs/Stapxs-QQ-Shell/utils/runtime"
 
 	"github.com/gorilla/websocket"
 )
@@ -27,6 +25,11 @@ func NewClient(url string) *Client {
 		url:       url,
 		sendQueue: make(chan string, 10), // 消息队列
 	}
+}
+
+// IsConnected 判断是否已经连接
+func (c *Client) IsConnected() bool {
+	return c.conn != nil
 }
 
 // Connect 连接到 WebSocket 服务器
@@ -73,15 +76,26 @@ func (c *Client) Close() {
 		_ = c.conn.Close()
 		close(c.sendQueue)
 	}
+
+	c.conn = nil
 }
 
 // readLoop 读取消息的后台协程
 func (c *Client) readLoop() {
 	for {
 		_, message, err := c.conn.ReadMessage()
-		if err == nil && string(message) != "" {
-			msg := string(message)
-			parseMessage(c, msg)
+		if err == nil {
+			if string(message) != "" {
+				msg := string(message)
+				parseMessage(c, msg)
+			}
+		} else if websocket.IsUnexpectedCloseError(err) {
+			// 清理一些数据
+			runtime.LoginStatus = make(map[string]interface{})
+			runtime.Data = make(map[string]interface{})
+			// 结束连接
+			c.Close()
+			return
 		}
 	}
 }
@@ -91,7 +105,6 @@ func (c *Client) writeLoop() {
 	for msg := range c.sendQueue {
 		err := c.conn.WriteMessage(websocket.TextMessage, []byte(msg))
 		if err != nil {
-			log.Printf("发送消息失败: %v\n", err)
 			break
 		}
 	}
@@ -103,6 +116,10 @@ func parseMessage(c *Client, message string) {
 	var data map[string]interface{}
 	err := json.Unmarshal([]byte(message), &data)
 	if err != nil {
+		return
+	}
+
+	if data["status"] != nil && data["status"] == "failed" {
 		return
 	}
 
