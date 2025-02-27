@@ -62,7 +62,6 @@ func InitialMainModel() *MainModel {
 	}
 }
 
-// Init implements View
 func (m MainModel) Init() tea.Cmd {
 	// 启动加载指示器
 	return tea.Batch(m.spinner.Tick, m.timer.Init())
@@ -109,6 +108,16 @@ func (m MainModel) View() string {
 	if runtime.ErrorMsg == "" {
 		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 快速退出 • "))
 		m.flexBox.GetRow(1).GetCell(2).SetContent(str)
+		var title = "" +
+			" _____ _                  _____ _____    _____ _       _ _  \n" +
+			"|   __| |_ ___ ___ _ _   |     |     |  |   __| |_ ___| | | \n" +
+			"|__   |  _| .'| . |_'_|  |  |  |  |  |  |__   |   | -_| | | \n" +
+			"|_____|_| |__,|  _|_,_|  |__  _|__  _|  |_____|_|_|___|_|_| \n" +
+			"              |_|           |__|  |__|                        "
+		m.flexBox.GetRow(0).GetCell(0).SetStyle(lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center).Foreground(mainColor))
+		m.flexBox.GetRow(0).GetCell(0).SetContent(
+			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Render(title),
+		)
 	} else {
 		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 退出 • "))
 		m.flexBox.GetRow(1).GetCell(2).SetContent(helpStyle("> " + runtime.ErrorMsg))
