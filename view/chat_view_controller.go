@@ -71,6 +71,11 @@ func (model *ChatModel) loadChat(item userItem) {
 			"message_id": 0,
 			"count":      20,
 		}, "GetChatHistoryFist")
+		// 获取群成员列表
+		webSocketClient.SendMessage("get_group_member_list", map[string]interface{}{
+			"group_id": item.Id(),
+			"no_cache": true,
+		}, "GetGroupMemberList")
 	}
 
 	runtime.Data["chatInfo"] = map[string]interface{}{
@@ -87,21 +92,41 @@ func (model *ChatModel) sendMessage() {
 	if runtime.Data["chatInfo"] != nil {
 		userType := runtime.Data["chatInfo"].(map[string]interface{})["type"].(string)
 		var sendData map[string]interface{}
+		// 构建消息体（map[string]interface{} 数组）
+		var message = []map[string]interface{}{
+			{
+				"type": "text",
+				"data": map[string]interface{}{
+					"text": model.sendInput.Value(),
+				},
+			},
+		}
+		if model.tags.replayMsg != -1 {
+			message = append(message, map[string]interface{}{
+				"type": "reply",
+				"data": map[string]interface{}{
+					"id": model.tags.replayMsg,
+				},
+			})
+		}
+		// 构建消息
 		if userType == "private" {
 			sendData = map[string]interface{}{
 				"user_id": runtime.Data["chatInfo"].(map[string]interface{})["id"].(float64),
-				"message": model.sendInput.Value(),
+				"message": message,
 			}
 		} else {
 			sendData = map[string]interface{}{
 				"group_id": runtime.Data["chatInfo"].(map[string]interface{})["id"].(float64),
-				"message":  model.sendInput.Value(),
+				"message":  message,
 			}
 		}
 		webSocketClient.SendMessage("send_msg", sendData, "SendMsgBack")
 		// 清空输入框
 		model.sendInput.SetValue("")
 		model.sendInput.Blur()
+		// 清空其他标志
+		model.tags.replayMsg = -1
 	}
 }
 

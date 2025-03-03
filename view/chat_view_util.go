@@ -18,14 +18,14 @@ func changeChatView(model *ChatModel, viewName string) {
 		model.sendInput.Blur()
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemList)
-		msgViewList.SetDelegate(delegateItemListBlur)
+		msgViewList.SetDelegate(delegateItemMsgBlur)
 		// 切换案件注册
 		setupListKey(chatViewlist)
 		cleanListKey(msgViewList)
 	case "chat":
 		// 样式调整
 		chatViewlist.SetDelegate(delegateItemListBlur)
-		msgViewList.SetDelegate(delegateItemList)
+		msgViewList.SetDelegate(delegateItemMsg)
 		// 取消搜索状态
 		if model.tags.pointStatue == "list-search" {
 			model.data.list.ResetFilter()
@@ -65,6 +65,9 @@ func updateListKey(model *ChatModel) map[string]string {
 		controlList = map[string]string{
 			"\uF062|\uF063": "滚动",
 			"\uF060":        "列表",
+		}
+		if model.tags.replayMsg == -1 {
+			controlList["R"] = "回复"
 		}
 		if model.sendInput.Focused() {
 			controlList["ESC"] = "取消"

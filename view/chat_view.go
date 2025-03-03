@@ -2,6 +2,7 @@ package view
 
 import (
 	"bytes"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,10 +60,11 @@ type ChatModel struct {
 }
 
 type Tags struct {
-	tipStr      string // 提示信息
-	focusIndex  int    // 登录输入框焦点位置
-	viewImage   string // 查看的图片
-	pointStatue string // 当前状态
+	tipStr      string  // 提示信息
+	focusIndex  int     // 登录输入框焦点位置
+	viewImage   string  // 查看的图片
+	replayMsg   float64 // 回复的消息 ID
+	pointStatue string  // 当前状态
 }
 
 type Data struct {
@@ -76,12 +78,12 @@ var (
 	delegateItemList     = list.NewDefaultDelegate()
 	delegateItemListBlur = list.NewDefaultDelegate() // 失去焦点
 	delegateItemMsg      = list.NewDefaultDelegate()
-	delegateItemMsgDark  = list.NewDefaultDelegate() // 消息列表（失去焦点）
+	delegateItemMsgBlur  = list.NewDefaultDelegate() // 消息列表（失去焦点）
 
 	selectTitleStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(mainColor).Foreground(mainColor).Padding(0, 0, 0, 1)
 	selectTitleStyleBlur    = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(mainFontColor).Foreground(mainFontColor).Padding(0, 0, 0, 1)
 	selectTitleStyleMsg     = lipgloss.NewStyle().BorderForeground(mainColor).Foreground(mainColor).Padding(0, 0, 0, 2)
-	selectTitleStyleMsgBlur = lipgloss.NewStyle().BorderForeground(mainFontColor).Foreground(mainFontColor).Padding(0, 0, 0, 1)
+	selectTitleStyleMsgBlur = lipgloss.NewStyle().BorderForeground(mainFontColor).Foreground(mainFontColor).Padding(0, 0, 0, 2)
 )
 
 // InitialChatModel 初始化聊天视图
@@ -105,15 +107,30 @@ func InitialChatModel() *ChatModel {
 	// 输入框
 	inputs := make([]textinput.Model, 2)
 	var t textinput.Model
+	var focusIndex = 0
 	for i := range inputs {
 		t = textinput.New()
 		switch i {
 		case 0:
 			t.Placeholder = "连接地址"
 			t.Focus()
+			// 获取环境变量 SSQQ_SHELL_ADDRESS
+			if runtime.LoginStatus["address"] != nil {
+				t.SetValue(runtime.LoginStatus["address"].(string))
+			} else {
+				t.SetValue(os.Getenv("SSQQ_SHELL_ADDRESS"))
+			}
 		case 1:
 			t.Placeholder = "连接密钥"
 			t.EchoMode = textinput.EchoPassword
+			// 获取环境变量 SSQQ_SHELL_TOKEN
+			if runtime.LoginStatus["token"] != nil {
+				t.SetValue(runtime.LoginStatus["token"].(string))
+				focusIndex = 1
+			} else {
+				t.SetValue(os.Getenv("SSQQ_SHELL_TOKEN"))
+				focusIndex = 1
+			}
 		}
 		t.Prompt = ""
 		inputs[i] = t
@@ -140,8 +157,8 @@ func InitialChatModel() *ChatModel {
 	// 消息列表
 	delegateItemMsg.Styles.SelectedTitle = selectTitleStyleMsg
 	delegateItemMsg.Styles.SelectedDesc = selectTitleStyleMsg.Foreground(mainColorDark)
-	delegateItemMsgDark.Styles.SelectedTitle = selectTitleStyleMsgBlur
-	delegateItemMsgDark.Styles.SelectedDesc = selectTitleStyleMsgBlur.Foreground(mainFontColor)
+	delegateItemMsgBlur.Styles.SelectedTitle = selectTitleStyleMsgBlur
+	delegateItemMsgBlur.Styles.SelectedDesc = selectTitleStyleMsgBlur.Foreground(mainFontColor)
 	msgList := list.New([]list.Item{msgItem{title: "", desc: ""}}, delegateItemMsg, 0, 0)
 	msgList.Title = "消息"              // 标题
 	msgList.Styles.Title = titleStyle // 标题样式
@@ -157,9 +174,10 @@ func InitialChatModel() *ChatModel {
 		sendInput: tMsg,
 		tags: Tags{
 			tipStr:      "未连接",
-			focusIndex:  0,
+			focusIndex:  focusIndex,
 			viewImage:   "",
 			pointStatue: "login",
+			replayMsg:   -1,
 		},
 		data: Data{
 			list:              userList,
@@ -195,7 +213,8 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		// >> 连接页面输入框控制
 		if webSocketClient == nil {
-			if utils.InArray([]string{"tab", "up", "down"}, inputKey) {
+			if utils.InArray([]string{"tab", "up", "down"}, inputKey) &&
+				model.tags.pointStatue == "login" {
 				// 未连接状态，对连接输入框进行操作控制和维护
 				if inputKey == "up" {
 					model.tags.focusIndex--
@@ -247,7 +266,11 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 		// >> 取消输入
 		if inputKey == "esc" {
 			if model.tags.pointStatue == "chat" {
-				model.sendInput.Blur()
+				if model.tags.replayMsg != -1 {
+					model.tags.replayMsg = -1
+				} else {
+					model.sendInput.Blur()
+				}
 			}
 		}
 
@@ -262,9 +285,9 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		// >> 图片查看器
-		if inputKey == "v" && !model.sendInput.Focused() {
-			if model.tags.pointStatue == "chat" {
+		if !model.sendInput.Focused() && model.tags.pointStatue == "chat" {
+			// >> 图片查看器
+			if inputKey == "v" {
 				selectedMsg := model.data.msgViewList.SelectedItem().(msgItem)
 				rawMessage := selectedMsg.RawMessage()
 				msgTypes := websocket.GetTypesInMessage(rawMessage)
@@ -277,6 +300,13 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 						}
 					}
 				}
+			}
+			// >> 回复消息
+			if inputKey == "r" {
+				selectedMsg := model.data.msgViewList.SelectedItem().(msgItem)
+				model.tags.replayMsg = selectedMsg.Id()
+				model.sendInput.Focus()
+				return model, nil
 			}
 		}
 
@@ -304,6 +334,7 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 				listSize := len(model.data.list.Items())
 				items := model.getFriendList()
 				if model.data.list.FilterState() != list.Filtering &&
+					model.data.list.FilterState() != list.FilterApplied &&
 					(len(items) != listSize || runtime.UpdateList) {
 					runtime.UpdateList = false
 					model.data.list.SetItems(items)
@@ -337,10 +368,48 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			// >> 消息列表
 			if runtime.Data["messageList"] != nil {
+				// 判断当前光标是不是在最后面
+				var isAtEnd bool
+				var listMsg = model.data.msgViewList
+				if listMsg.Items()[len(listMsg.Items())-1].(msgItem).id ==
+					listMsg.SelectedItem().(msgItem).id {
+					isAtEnd = true
+				}
+
 				var items []list.Item
 				for _, v := range runtime.Data["messageList"].([]map[string]interface{}) {
+					// 检查消息里有没有 reply
+					var replyId float64 = -1
+					for _, v1 := range v["message"].([]interface{}) {
+						if v1.(map[string]interface{})["type"].(string) == "reply" {
+							replyId, _ = strconv.ParseFloat(v1.(map[string]interface{})["data"].(map[string]interface{})["id"].(string), 64)
+						}
+					}
+
+					var msgSender = v["sender"].(map[string]interface{})
+					var replyName = ""
+					if msgSender["card"].(string) != "" {
+						replyName = msgSender["card"].(string)
+					} else {
+						replyName = msgSender["nickname"].(string)
+					}
+
+					if replyId != -1 {
+						// 从 messageList 中找到 reply 的消息
+						for _, v1 := range runtime.Data["messageList"].([]map[string]interface{}) {
+							if v1["messageId"].(float64) == replyId {
+								var sender = v1["sender"].(map[string]interface{})
+								if sender["card"].(string) != "" {
+									replyName += " -> " + sender["card"].(string)
+								} else {
+									replyName += " -> " + sender["nickname"].(string)
+								}
+								break
+							}
+						}
+					}
 					items = append(items, msgItem{
-						title:      v["sender"].(map[string]interface{})["nickname"].(string),
+						title:      replyName,
 						desc:       v["rawMessage"].(string),
 						id:         v["messageId"].(float64),
 						rawMessage: v["message"].([]interface{}),
@@ -349,6 +418,11 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 				model.data.msgViewList.SetItems(items)
 				model.data.msgViewList.Title =
 					runtime.Data["chatInfo"].(map[string]interface{})["title"].(string)
+
+				// 刷新光标位置，挪到最后面
+				if isAtEnd {
+					model.data.msgViewList.Select(len(items) - 1)
+				}
 			}
 
 			// >> 刷新功能指示器
@@ -373,6 +447,11 @@ func (model *ChatModel) Update(msg tea.Msg) (View, tea.Cmd) {
 		model.data.list, listCmd = model.data.list.Update(msg)
 	}
 
+	if model.tags.replayMsg != -1 {
+		model.sendInput.Placeholder = "回复……"
+	} else {
+		model.sendInput.Placeholder = "发送……"
+	}
 	var cmdSi tea.Cmd
 	model.sendInput, cmdSi = model.sendInput.Update(msg)
 	return model, tea.Batch(cmdSi, listCmd)

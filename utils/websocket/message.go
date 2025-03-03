@@ -118,15 +118,34 @@ func (m MsgFunc) GetGroupList(c *Client, head string, msg map[string]interface{}
 	runtime.Data["userList"] = sortUserList(runtime.Data["userList"].([]map[string]interface{}))
 }
 
+// GetGroupMemberList 获取群成员列表
+func (m MsgFunc) GetGroupMemberList(c *Client, head string, msg map[string]interface{}, echoList []string) {
+	data := msg["data"].([]interface{})
+	backList := make([]map[string]interface{}, 0)
+	for _, member := range data {
+		memberInfo := member.(map[string]interface{})
+		user := make(map[string]interface{})
+		user["user_id"] = memberInfo["user_id"]
+		user["nickname"] = memberInfo["nickname"]
+		user["card"] = memberInfo["card"]
+		user["role"] = memberInfo["role"]
+		backList = append(backList, user)
+	}
+	runtime.Data["chatInfo"].(map[string]interface{})["memberList"] = backList
+}
+
 // GetChatHistoryFist 获取聊天记录（首次）
 func (m MsgFunc) GetChatHistoryFist(c *Client, head string, msg map[string]interface{}, echoList []string) {
 	if msg["data"] != nil {
 		data := msg["data"].(map[string]interface{})
 		messages := data["messages"].([]interface{})
-		singleMsgList := make([]map[string]interface{}, len(messages))
-		for i, message := range messages {
-			singleMsg := parseMessageBody(message.(map[string]interface{}))
-			singleMsgList[i] = singleMsg
+		//  从 messages 中移除 raw_message 为空的消息
+		singleMsgList := make([]map[string]interface{}, 0, len(messages))
+		for i := 0; i < len(messages); i++ {
+			if messages[i].(map[string]interface{})["raw_message"] != "" {
+				singleMsg := parseMessageBody(messages[i].(map[string]interface{}))
+				singleMsgList = append(singleMsgList, singleMsg)
+			}
 		}
 		runtime.Data["messageList"] = singleMsgList
 	}
@@ -145,7 +164,7 @@ func (m MsgFunc) Message(c *Client, head string, msg map[string]interface{}, ech
 	if msg["group_id"] != nil {
 		senderId = msg["group_id"].(float64)
 	} else {
-		senderId = msg["real_id"].(float64)
+		senderId = msg["target_id"].(float64)
 	}
 
 	if runtime.Data["chatInfo"] != nil && runtime.Data["chatInfo"].(map[string]interface{})["id"].(float64) == senderId {
