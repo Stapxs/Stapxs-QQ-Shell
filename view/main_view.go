@@ -58,7 +58,7 @@ func InitialMainModel() *MainModel {
 	return &MainModel{
 		flexBox: flexBox,
 		spinner: newSpinner,
-		timer:   timer.NewWithInterval(time.Second*3, time.Millisecond),
+		timer:   timer.NewWithInterval(time.Second*2, time.Millisecond),
 	}
 }
 
@@ -94,12 +94,17 @@ func (m MainModel) View() string {
 		lipgloss.NewStyle().Foreground(mainColor).Render("初始化中..."),
 	)
 
-	// 如果存在 ErrorMsg，此视图将作为错误页使用
-	// 渲染错误页视图
-	if runtime.ErrorMsg == "" && m.timer.Timedout() {
+	if runtime.Debug {
+		// 调试模式直接跳过加载视图
 		runtime.CurrentView = "chat"
+	} else {
+		if runtime.ErrorMsg == "" && m.timer.Timedout() {
+			runtime.CurrentView = "chat"
+		}
 	}
 
+	// 如果存在 ErrorMsg，此视图将作为错误页使用
+	// 渲染错误页视图
 	errorFbStyleTitle := lipgloss.NewStyle().Foreground(mainReverseFontColor).Background(mainColor).Margin(1, 0, 0, 3).Padding(0, 1).Render
 	errorFbStyle := lipgloss.NewStyle().Foreground(mainFontColor).Margin(1, 0, 0, 3).Render
 	errorStyleTitle := lipgloss.NewStyle().Foreground(mainReverseFontColor).Background(lipgloss.Color("#fc5c65")).Margin(1, 0, 0, 3).Padding(0, 1).Render
@@ -108,12 +113,21 @@ func (m MainModel) View() string {
 	if runtime.ErrorMsg == "" {
 		m.flexBox.GetRow(1).GetCell(1).SetContent(helpStyle(" • ctrl+c: 快速退出 • "))
 		m.flexBox.GetRow(1).GetCell(2).SetContent(str)
+		// 窗口宽度
 		var title = "" +
 			"   _____ _                  _____ _____    _____ _       _ _  \n" +
 			"  |   __| |_ ___ ___ _ _   |     |     |  |   __| |_ ___| | | \n" +
 			"  |__   |  _| .'| . |_'_|  |  |  |  |  |  |__   |   | -_| | | \n" +
 			"  |_____|_| |__,|  _|_,_|  |__  _|__  _|  |_____|_|_|___|_|_| \n" +
 			"                |_|           |__|  |__|                        "
+		if m.flexBox.GetWidth() < 66 {
+			title = "" +
+				"   _____ _____   \n" +
+				"  |   __|     |  \n" +
+				"  |__   |  |  |  \n" +
+				"  |_____|__  _|  \n" +
+				"           |__|  "
+		}
 		m.flexBox.GetRow(0).GetCell(0).SetStyle(lipgloss.NewStyle().Align(lipgloss.Center).AlignVertical(lipgloss.Center).Foreground(mainColor))
 		m.flexBox.GetRow(0).GetCell(0).SetContent(
 			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Render(title),

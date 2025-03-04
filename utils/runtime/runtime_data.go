@@ -1,5 +1,7 @@
 package runtime
 
+var Debug = false
+
 var CurrentView = "main"
 var ErrorMsg = ""
 var ErrorFullTrace = ""

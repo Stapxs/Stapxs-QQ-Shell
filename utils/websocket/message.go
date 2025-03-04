@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Stapxs/Stapxs-QQ-Shell/utils"
@@ -251,6 +252,26 @@ func getRawMessage(messageItem []interface{}) string {
 			text = strings.ReplaceAll(text, "\n", "")
 			text = strings.ReplaceAll(text, "\r", "")
 			finalStr += text
+		case "at":
+			// at 消息只针对打开着的群组有效
+			var chatInfo = runtime.Data["chatInfo"].(map[string]interface{})
+			var memberList = chatInfo["memberList"].([]map[string]interface{})
+			var get = false
+			for _, member := range memberList {
+				// data["qq"].(string)
+				var qq, _ = strconv.ParseFloat(data["qq"].(string), 64)
+				if member["user_id"] == qq {
+					get = true
+					if member["card"] != "" {
+						finalStr += "@" + member["card"].(string)
+					} else {
+						finalStr += "@" + member["nickname"].(string)
+					}
+				}
+			}
+			if !get {
+				finalStr += "[@]"
+			}
 		case "face":
 			finalStr += "[表情]"
 		case "bface":

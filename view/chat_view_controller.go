@@ -127,6 +127,8 @@ func (model *ChatModel) sendMessage() {
 		model.sendInput.Blur()
 		// 清空其他标志
 		model.tags.replayMsg = -1
+		// 滚动到底部
+		model.data.msgViewList.Select(len(model.data.msgViewList.Items()))
 	}
 }
 

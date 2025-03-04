@@ -496,13 +496,21 @@ func (model *ChatModel) View() (s string) {
 		model.data.list.SetSize(listGrid.GetWidth()-w, listGrid.GetHeight()-h)
 		listGrid.SetContent(listStyle.Render(model.data.list.View()))
 		model.data.msgViewList.SetSize(mainGrid.GetWidth()-w, mainGrid.GetHeight()-h-2)
+		// >> 消息输入框
+		model.sendInput.Width = mainGrid.GetWidth() - w - 5
 		// >> 消息列表
 		if model.tags.viewImage == "" {
 			// 消息列表
-			mainGrid.SetContent(
-				listStyle.Render(model.data.msgViewList.View()) + "\n " +
-					sendInputStyle.Render(model.sendInput.View()),
-			)
+			if model.tags.pointStatue == "chat" {
+				mainGrid.SetContent(
+					listStyle.Render(model.data.msgViewList.View()) + "\n " +
+						sendInputStyle.Render(model.sendInput.View()),
+				)
+			} else {
+				mainGrid.SetContent(
+					listStyle.Render(model.data.msgViewList.View()),
+				)
+			}
 		} else {
 			// 图片预览器
 			mainGrid.SetStyle(centerStyle)
@@ -546,8 +554,6 @@ func (model *ChatModel) View() (s string) {
 			}
 			mainGrid.SetContent(qrString + "\n" + linedUrl + "\n\n" + tipStyle.Render(" • 任意操作退出 • "))
 		}
-		// >> 消息输入框
-		model.sendInput.Width = mainGrid.GetWidth() - w - 5
 	}
 
 	SetControlBar(model.flexBox, controlList, model.tags.tipStr)

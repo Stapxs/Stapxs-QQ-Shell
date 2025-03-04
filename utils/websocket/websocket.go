@@ -155,15 +155,17 @@ func parseMessage(c *Client, message string) {
 		in[1] = reflect.ValueOf(methodName)
 		in[2] = reflect.ValueOf(data)
 		in[3] = reflect.ValueOf(echoList)
-		defer func() string {
-			if r := recover(); r != nil {
-				runtime.CurrentView = "main"
-				runtime.ErrorMsg = "处理消息 " + methodName + " 异常"
-				filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
-				runtime.ErrorFullTrace = filteredStack
-			}
-			return ""
-		}()
+		if runtime.Debug {
+			defer func() string {
+				if r := recover(); r != nil {
+					runtime.CurrentView = "main"
+					runtime.ErrorMsg = "处理消息 " + methodName + " 异常"
+					filteredStack := utils.FilterStack(debug.Stack(), "github.com/Stapxs/Stapxs-QQ-Shell")
+					runtime.ErrorFullTrace = filteredStack
+				}
+				return ""
+			}()
+		}
 		method.Call(in)
 	}
 }
